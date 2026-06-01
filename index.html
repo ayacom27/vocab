@@ -40,14 +40,20 @@
 
   main{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 18px 0;}
 
-  .scene{width:100%; max-width:440px; height:60vh; max-height:520px; perspective:1400px;}
+  .scene-wrap{position:relative; width:100%; max-width:440px;}
+  .scene{width:100%; height:60vh; max-height:520px; perspective:1400px;}
+  .starOverlay{
+    position:absolute; top:14px; right:16px; font-size:30px; line-height:1;
+    background:none; border:none; color:#3a3f6b; z-index:6; cursor:pointer; padding:0;
+  }
+  .starOverlay.on{color:var(--gold);}
   .card{
     position:relative; width:100%; height:100%; transform-style:preserve-3d;
     transition:transform .5s cubic-bezier(.2,.7,.2,1); cursor:pointer;
   }
   .card.flipped{transform:rotateY(180deg);}
   .face{
-    position:absolute; inset:0; backface-visibility:hidden; border-radius:24px;
+    position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:24px;
     background:linear-gradient(155deg,var(--card),var(--card2));
     border:1px solid var(--line); box-shadow:0 20px 50px rgba(0,0,0,.45);
     padding:24px; display:flex; flex-direction:column; overflow:hidden;
@@ -56,24 +62,20 @@
   .front{align-items:center; justify-content:center; text-align:center;}
   .word{font-size:42px; font-weight:700; line-height:1.1; word-break:break-word;}
   .pos{color:var(--sub); margin-top:10px; font-size:15px;}
-  .hint{position:absolute; bottom:16px; color:var(--sub); font-size:12px;}
-  .star{
-    position:absolute; top:14px; right:16px; font-size:26px; cursor:pointer;
-    color:#3a3f6b; z-index:2; line-height:1;
-  }
-  .star.on{color:var(--gold);}
+  .hint{position:absolute; bottom:16px; left:0; right:0; text-align:center; color:var(--sub); font-size:12px;}
 
   .img{
     width:100%; height:140px; border-radius:16px; object-fit:cover; margin-bottom:8px;
     background:var(--card2); display:block;
   }
   .emoji-img{font-size:80px; text-align:center; height:140px; line-height:140px;}
-  .back .scroll{overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch;}
+  .back .scroll{overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:18px;}
   .back .ja{font-size:26px; font-weight:700; margin:8px 0 4px;}
   .field{margin-top:12px;}
   .field .label{font-size:12px; color:var(--accent2); font-weight:700; letter-spacing:.5px; text-transform:uppercase;}
   .field .val{font-size:15px; margin-top:3px; line-height:1.5; color:var(--text); white-space:pre-wrap;}
   .field .val.empty{color:#5b6092; font-style:italic;}
+  .dates{margin-top:14px; padding-top:10px; border-top:1px solid var(--line); font-size:12px; color:var(--sub);}
 
   .nav{display:flex; align-items:center; gap:18px; margin-top:18px;}
   .nav button{
@@ -100,9 +102,10 @@
   .overlay.show{display:flex;}
   .sheet{
     width:100%; max-width:520px; background:var(--card); border-radius:24px 24px 0 0;
-    border-top:1px solid var(--line); padding:20px 18px calc(20px + env(safe-area-inset-bottom));
-    max-height:92vh; overflow-y:auto; animation:up .25s ease;
+    border-top:1px solid var(--line); max-height:92vh; overflow-y:auto; animation:up .25s ease;
+    display:flex; flex-direction:column;
   }
+  .sheet-body{padding:20px 18px 6px;}
   @keyframes up{from{transform:translateY(40px); opacity:.4;} to{transform:none; opacity:1;}}
   .sheet h2{margin:4px 0 16px; font-size:19px;}
   label.lbl{display:block; font-size:13px; color:var(--sub); margin:14px 0 5px;}
@@ -115,7 +118,10 @@
   .imgrow input{flex:1;}
   .clearbtn{background:var(--card2); border:1px solid var(--line); color:var(--sub); width:48px; border-radius:12px; font-size:20px; cursor:pointer;}
   .clearbtn:active{background:#3a1d2a; color:#fda4af;}
-  .sheet-actions{display:flex; gap:10px; margin-top:22px;}
+  .sheet-actions{
+    display:flex; gap:10px; padding:12px 18px calc(14px + env(safe-area-inset-bottom));
+    position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--line); z-index:2;
+  }
   .sheet-actions button{flex:1; padding:14px; border-radius:14px; font-size:16px; font-weight:600; cursor:pointer; border:none;}
   .cancel{background:var(--card2); color:var(--text);}
   .archive{background:#2a2540; color:#c4b5fd;}
@@ -128,6 +134,8 @@
   /* list view */
   .listview{display:none; width:100%; max-width:520px; margin:0 auto;}
   .listview.show{display:block;}
+  .sortbar{margin:0 4px 10px;}
+  .sortbar select{width:100%;}
   .listitem{
     display:flex; align-items:center; gap:10px; padding:12px 14px; background:var(--card);
     border:1px solid var(--line); border-radius:14px; margin-bottom:8px; cursor:pointer;
@@ -162,29 +170,31 @@
 <main>
   <!-- card scene -->
   <div id="cardArea" style="width:100%; display:flex; flex-direction:column; align-items:center;">
-    <div class="scene">
-      <div class="card" id="card">
-        <div class="face front">
-          <span class="star" id="starFront">★</span>
-          <div class="word" id="frontWord">—</div>
-          <div class="pos" id="frontPos"></div>
-          <div class="hint">タップで意味を表示</div>
-        </div>
-        <div class="face back">
-          <span class="star" id="starBack">★</span>
-          <div class="scroll">
-            <img class="img" id="backImg" alt="" style="display:none;">
-            <div class="emoji-img" id="backEmoji" style="display:none;"></div>
-            <div class="ja" id="backJa"></div>
-            <div class="field"><div class="label">語源</div><div class="val" id="fEty"></div></div>
-            <div class="field"><div class="label">類似語</div><div class="val" id="fSyn"></div></div>
-            <div class="field"><div class="label">イディオム</div><div class="val" id="fIdiom"></div></div>
-            <div class="field"><div class="label">例文</div><div class="val" id="fEx"></div></div>
-            <div class="field"><div class="label">メモ</div><div class="val" id="fMemo"></div></div>
+    <div class="scene-wrap">
+      <div class="scene">
+        <div class="card" id="card">
+          <div class="face front">
+            <div class="word" id="frontWord">—</div>
+            <div class="pos" id="frontPos"></div>
+            <div class="hint">タップで意味を表示</div>
           </div>
-          <div class="hint">タップで戻る・長押しで編集</div>
+          <div class="face back">
+            <div class="scroll">
+              <img class="img" id="backImg" alt="" style="display:none;">
+              <div class="emoji-img" id="backEmoji" style="display:none;"></div>
+              <div class="ja" id="backJa"></div>
+              <div class="field"><div class="label">語源</div><div class="val" id="fEty"></div></div>
+              <div class="field"><div class="label">類似語</div><div class="val" id="fSyn"></div></div>
+              <div class="field"><div class="label">イディオム</div><div class="val" id="fIdiom"></div></div>
+              <div class="field"><div class="label">例文</div><div class="val" id="fEx"></div></div>
+              <div class="field"><div class="label">メモ</div><div class="val" id="fMemo"></div></div>
+              <div class="dates" id="cardDates"></div>
+            </div>
+            <div class="hint">タップで戻る・長押しで編集</div>
+          </div>
         </div>
       </div>
+      <button class="starOverlay" id="starBtn">★</button>
     </div>
     <div class="nav">
       <button id="prevBtn">‹</button>
@@ -211,41 +221,43 @@
 <!-- add/edit sheet -->
 <div class="overlay" id="overlay">
   <div class="sheet">
-    <h2 id="sheetTitle">単語を追加</h2>
+    <div class="sheet-body">
+      <h2 id="sheetTitle">単語を追加</h2>
 
-    <label class="lbl">英単語 *</label>
-    <input id="inWord" placeholder="例: serendipity" autocapitalize="off" autocomplete="off">
-    <button class="primary" id="autoFetch" style="width:100%; margin-top:10px;">✨ 自動入力（発音・語源・類似語・例文・画像）</button>
-    <div class="hint-sm" id="fetchStatus">英単語を入力してこのボタンを押すと、意味以外の欄に自動で書き込みます。</div>
+      <label class="lbl">英単語 *</label>
+      <input id="inWord" placeholder="例: serendipity" autocapitalize="off" autocomplete="off">
 
-    <label class="lbl">日本語の意味 *</label>
-    <textarea id="inJa" placeholder="自分で入力してください"></textarea>
+      <label class="lbl">日本語の意味 *</label>
+      <textarea id="inJa" placeholder="自分で入力してください"></textarea>
+      <button class="primary" id="autoFetch" style="width:100%; margin-top:10px;">✨ 自動入力（発音・語源・類似語・例文・画像）</button>
+      <div class="hint-sm" id="fetchStatus">英単語を入力してこのボタンを押すと、意味以外の欄に自動で書き込みます。</div>
 
-    <label class="lbl">画像</label>
-    <div class="imgrow">
-      <input id="inImg" placeholder="画像URL（自動取得されます）" autocapitalize="off">
-      <button class="clearbtn" id="clearImg" title="画像を消す">×</button>
+      <label class="lbl">画像</label>
+      <div class="imgrow">
+        <input id="inImg" placeholder="画像URL（自動取得されます）" autocapitalize="off">
+        <button class="clearbtn" id="clearImg" title="画像を消す">×</button>
+      </div>
+      <img class="imgpreview" id="imgPreview" alt="">
+      <button class="ghost" id="lkGimg">🖼️ Google画像検索で探す</button>
+
+      <label class="lbl">発音</label>
+      <input id="inPos" placeholder="例: /ˌserənˈdipədi/">
+
+      <label class="lbl">語源</label>
+      <textarea id="inEty" placeholder="例: スリランカの旧称 Serendip に由来する造語"></textarea>
+
+      <label class="lbl">類似語</label>
+      <textarea id="inSyn" placeholder="例: chance, fortune, luck, fluke"></textarea>
+
+      <label class="lbl">イディオム / 関連表現</label>
+      <textarea id="inIdiom" placeholder="例: by happy accident"></textarea>
+
+      <label class="lbl">例文</label>
+      <textarea id="inEx" placeholder="例: Meeting her was pure serendipity."></textarea>
+
+      <label class="lbl">メモ（任意）</label>
+      <textarea id="inMemo" placeholder="覚え方やイメージなど、自由にメモ"></textarea>
     </div>
-    <img class="imgpreview" id="imgPreview" alt="">
-    <button class="ghost" id="lkGimg">🖼️ Google画像検索で探す</button>
-
-    <label class="lbl">発音</label>
-    <input id="inPos" placeholder="例: /ˌserənˈdipədi/">
-
-    <label class="lbl">語源</label>
-    <textarea id="inEty" placeholder="例: スリランカの旧称 Serendip に由来する造語"></textarea>
-
-    <label class="lbl">類似語</label>
-    <textarea id="inSyn" placeholder="例: chance, fortune, luck, fluke"></textarea>
-
-    <label class="lbl">イディオム / 関連表現</label>
-    <textarea id="inIdiom" placeholder="例: by happy accident"></textarea>
-
-    <label class="lbl">例文</label>
-    <textarea id="inEx" placeholder="例: Meeting her was pure serendipity."></textarea>
-
-    <label class="lbl">メモ（任意）</label>
-    <textarea id="inMemo" placeholder="覚え方やイメージなど、自由にメモ"></textarea>
 
     <div class="sheet-actions">
       <button class="cancel" id="cancelBtn">キャンセル</button>
@@ -257,12 +269,14 @@
 
 <script>
 const STORE_KEY = "vocab_cards_v1";
+const SORT_KEY = "vocab_sort";
 let cards = [];
 let idx = 0;
 let editId = null;
 let favOnly = false;
 let listMode = false;
 let archMode = false;
+let sortMode = "created_desc";
 
 const $ = id => document.getElementById(id);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
@@ -270,11 +284,23 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6
 function load(){
   try{ cards = JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
   catch(e){ cards = []; }
+  sortMode = localStorage.getItem(SORT_KEY) || "created_desc";
 }
 function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(cards)); }
 
+function fmtDate(ts){ if(!ts) return "—"; const d=new Date(ts); return d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate(); }
+
 function active(){ return cards.filter(c=>!c.arch); }
 function view(){ const base=active(); return favOnly ? base.filter(c=>c.fav) : base; }
+
+function sortList(list){
+  const a=[...list];
+  if(sortMode==="alpha") a.sort((x,y)=>(x.word||"").toLowerCase().localeCompare((y.word||"").toLowerCase()));
+  else if(sortMode==="created_asc") a.sort((x,y)=>(x.createdAt||0)-(y.createdAt||0));
+  else if(sortMode==="studied_desc") a.sort((x,y)=>(y.lastStudied||0)-(x.lastStudied||0));
+  else a.sort((x,y)=>(y.createdAt||0)-(x.createdAt||0));
+  return a;
+}
 
 function render(){
   const list = view();
@@ -284,7 +310,6 @@ function render(){
   $("listBtn").classList.toggle("active", listMode);
   $("archBtn").classList.toggle("active", archMode);
 
-  // archive view
   if(archMode){
     $("modeLabel").textContent = "アーカイブ表示中";
     $("cardArea").style.display="none";
@@ -324,14 +349,14 @@ function render(){
   setField("fIdiom", c.idiom);
   setField("fEx", c.ex);
   setField("fMemo", c.memo);
+  $("cardDates").textContent = "登録日: "+fmtDate(c.createdAt)+" ／ 最終学習: "+fmtDate(c.lastStudied);
 
   const img=$("backImg"), em=$("backEmoji");
   if(c.img){ img.src=c.img; img.style.display="block"; em.style.display="none"; }
   else if(c.emoji){ em.textContent=c.emoji; em.style.display="block"; img.style.display="none"; }
   else { img.style.display="none"; em.style.display="none"; }
 
-  $("starFront").classList.toggle("on", !!c.fav);
-  $("starBack").classList.toggle("on", !!c.fav);
+  $("starBtn").classList.toggle("on", !!c.fav);
   $("counter").textContent = (idx+1)+" / "+list.length;
 }
 function setField(id,v){
@@ -340,23 +365,33 @@ function setField(id,v){
   else { el.textContent="（未登録）"; el.classList.add("empty"); }
 }
 
+const SORT_OPTS=[["created_desc","登録日（新しい順）"],["created_asc","登録日（古い順）"],["alpha","アルファベット順 (A→Z)"],["studied_desc","学習日（新しい順）"]];
+function sortBarHTML(){
+  let opts=SORT_OPTS.map(o=>`<option value="${o[0]}"${o[0]===sortMode?" selected":""}>${o[1]}</option>`).join("");
+  return `<div class="sortbar"><select id="sortSel">${opts}</select></div>`;
+}
+
 function renderList(list){
   const lv=$("listView");
-  if(list.length===0){ lv.innerHTML='<div class="empty-state"><div class="big">📚</div><p>該当する単語がありません。</p></div>'; return; }
-  lv.innerHTML="";
-  list.forEach((c)=>{
+  const sorted=sortList(list);
+  if(sorted.length===0){ lv.innerHTML=sortBarHTML()+'<div class="empty-state"><div class="big">📚</div><p>該当する単語がありません。</p></div>'; attachSort(); return; }
+  lv.innerHTML=sortBarHTML();
+  sorted.forEach((c)=>{
     const div=document.createElement("div");
     div.className="listitem";
     const icon = c.img ? "🖼️" : (c.emoji||"📄");
     div.innerHTML = `<div class="li-emoji">${icon}</div>
       <div style="flex:1; min-width:0;"><div class="li-w">${esc(c.word)}</div><div class="li-j">${esc(c.ja||"")}</div></div>
-      <div class="li-star ${c.fav?'on':''}">★</div>
-      <div class="li-act" title="アーカイブ">🗄</div>`;
+      <div class="li-star ${c.fav?'on':''}">★</div>`;
     div.querySelector(".li-star").addEventListener("click",e=>{ e.stopPropagation(); c.fav=!c.fav; save(); render(); });
-    div.querySelector(".li-act").addEventListener("click",e=>{ e.stopPropagation(); archiveById(c.id); });
     div.addEventListener("click",()=>openEdit(c.id));
     lv.appendChild(div);
   });
+  attachSort();
+}
+function attachSort(){
+  const sel=$("sortSel");
+  if(sel) sel.addEventListener("change",()=>{ sortMode=sel.value; localStorage.setItem(SORT_KEY,sortMode); render(); });
 }
 
 function renderArchive(){
@@ -402,6 +437,7 @@ function openAdd(){
   FIELDS.forEach(i=>$(i).value="");
   $("fetchStatus").textContent=""; $("imgPreview").classList.remove("show");
   $("overlay").classList.add("show");
+  setTimeout(()=>{ $("inWord").focus(); }, 60);
 }
 function openEdit(id){
   const c=cards.find(x=>x.id===id); if(!c) return;
@@ -428,7 +464,8 @@ function saveCard(){
   if(editId){
     const c=cards.find(x=>x.id===editId); Object.assign(c,data);
   }else{
-    data.id=uid(); data.fav=false; data.arch=false; cards.unshift(data); idx=0; favOnly=false; archMode=false;
+    data.id=uid(); data.fav=false; data.arch=false; data.createdAt=Date.now(); data.lastStudied=null;
+    cards.unshift(data); idx=0; favOnly=false; archMode=false;
   }
   save(); closeSheet(); render();
 }
@@ -447,7 +484,6 @@ async function autoFetch(){
   $("fetchStatus").textContent="取得中…（数秒かかります）";
   const got=[];
 
-  // 発音・語源(定義)・類似語・例文（dictionaryapi.dev・CORS対応）
   try{
     const dr=await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/"+encodeURIComponent(w));
     if(dr.ok){
@@ -472,7 +508,6 @@ async function autoFetch(){
     }
   }catch(e){}
 
-  // 画像：Openverse（CORS対応）→ だめならWikipedia
   if(!$("inImg").value.trim()){
     try{
       const ov=await fetch("https://api.openverse.org/v1/images/?q="+encodeURIComponent(w)+"&page_size=1");
@@ -510,14 +545,15 @@ function updatePreview(){
 }
 
 /* events */
-$("card").addEventListener("click", ()=>$("card").classList.toggle("flipped"));
+$("card").addEventListener("click", ()=>{
+  const flipped=$("card").classList.toggle("flipped");
+  if(flipped){ const c=view()[idx]; if(c){ c.lastStudied=Date.now(); save(); $("cardDates").textContent="登録日: "+fmtDate(c.createdAt)+" ／ 最終学習: "+fmtDate(c.lastStudied); } }
+});
 let pressTimer=null;
 $("card").addEventListener("pointerdown", ()=>{ pressTimer=setTimeout(()=>{ const c=view()[idx]; if(c) openEdit(c.id); }, 600); });
 ["pointerup","pointerleave","pointermove"].forEach(ev=>$("card").addEventListener(ev,()=>clearTimeout(pressTimer)));
 
-$("starFront").addEventListener("click",e=>{e.stopPropagation(); toggleFav();});
-$("starBack").addEventListener("click",e=>{e.stopPropagation(); toggleFav();});
-function toggleFav(){ const c=view()[idx]; if(c){ c.fav=!c.fav; save(); render(); } }
+$("starBtn").addEventListener("click",e=>{ e.stopPropagation(); const c=view()[idx]; if(c){ c.fav=!c.fav; save(); render(); } });
 
 $("nextBtn").addEventListener("click",next);
 $("prevBtn").addEventListener("click",prev);
@@ -530,7 +566,7 @@ $("saveBtn").addEventListener("click",saveCard);
 $("archiveBtn").addEventListener("click",archiveCurrentEdit);
 $("autoFetch").addEventListener("click",autoFetch);
 $("inImg").addEventListener("input",updatePreview);
-$("clearImg").addEventListener("click",()=>{ $("inImg").value=""; updatePreview(); });
+$("clearImg").addEventListener("click",()=>{ $("inImg").value=""; updatePreview(); $("inImg").focus(); });
 $("lkGimg").addEventListener("click",()=>{ const w=$("inWord").value.trim(); if(!w){ $("fetchStatus").textContent="先に英単語を入力してください"; return; } window.open("https://www.google.com/search?tbm=isch&q="+encodeURIComponent("image "+w),"_blank"); });
 
 $("favBtn").addEventListener("click",()=>{ favOnly=!favOnly; archMode=false; idx=0; render(); });
