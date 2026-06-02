@@ -263,6 +263,7 @@
       <h2>📷 写真から読み取り</h2>
       <input type="file" id="impFile" accept="image/*">
       <div class="hint-sm" id="impStatus" style="margin-top:8px;"></div>
+      <img id="impPreview" alt="" style="display:none; width:100%; border-radius:12px; margin-top:10px; border:1px solid var(--line);">
       <label class="lbl">読み取り結果（編集できます）</label>
       <textarea id="impText" style="min-height:180px;" placeholder="例：&#10;apple ＝ りんご&#10;run ＝ 走る"></textarea>
     </div>
@@ -527,7 +528,7 @@ function parseOCR(text){
   return out.join("\n");
 }
 
-function openImport(){ $("impFile").value=""; $("impText").value=""; $("impStatus").textContent=""; $("importOverlay").classList.add("show"); }
+function openImport(){ $("impFile").value=""; $("impText").value=""; $("impStatus").textContent=""; $("impPreview").style.display="none"; $("impPreview").removeAttribute("src"); $("importOverlay").classList.add("show"); }
 function closeImport(){ $("importOverlay").classList.remove("show"); }
 
 function loadImage(file){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=URL.createObjectURL(file); }); }
@@ -628,7 +629,11 @@ $("shuffleBtn").addEventListener("click",()=>{ for(let i=cards.length-1;i>0;i--)
 
 $("impCancel").addEventListener("click",closeImport);
 $("impCommit").addEventListener("click",commitImport);
-$("impFile").addEventListener("change",e=>runOCR(e.target.files[0]));
+$("impFile").addEventListener("change",e=>{
+  const f=e.target.files[0];
+  if(f){ const p=$("impPreview"); p.src=URL.createObjectURL(f); p.style.display="block"; }
+  runOCR(f);
+});
 $("importOverlay").addEventListener("click",e=>{ if(e.target===$("importOverlay")) closeImport(); });
 $("overlay").addEventListener("click",e=>{ if(e.target===$("overlay")) closeSheet(); });
 
