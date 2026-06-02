@@ -552,11 +552,13 @@ function firstEnToken(s){
   const m=t.match(/[A-Za-z][A-Za-z'\-]*/);       // 最初の英単語トークン
   return (m && m[0].length>=2) ? m[0] : "";      // 1文字はアイコン誤認とみなし除外
 }
-const JA_CHARS="぀-ヿ㐀-鿿ｦ-ﾟ々ー～";
+const JA_CHARS="\\u3040-\\u30ff\\u3400-\\u9fff\\uff66-\\uff9f\\u301c\\uff5e々ー";
 function cleanJa(s){
   let t=(s||"").replace(/[ 　]+/g,"");                                   // 空白を詰める
-  t=t.replace(new RegExp("^[^"+JA_CHARS+"]+"),"");                       // 先頭の非日本語ゴミ（[7・[形・記号など）を除去
-  t=t.replace(/^(名|動|形|副|前|接|代|他|自|助|句|熟|冠|間|名詞|動詞|形容詞|副詞)(?=[぀-ヿ㐀-鿿])/,""); // 先頭の品詞タグ文字を除去
+  t=t.replace(/[~∼〜～]/g,"～");                            // 波ダッシュを ～ に正規化
+  t=t.replace(/^[ロﾛ口回日員]+(?=[^\s])/,"");                            // 品詞ボックスの誤読（ロ など）を先頭から除去
+  t=t.replace(new RegExp("^[^"+JA_CHARS+"]+"),"");                       // 先頭の非日本語ゴミ（[7・記号など）を除去
+  t=t.replace(/^(名詞|動詞|形容詞|副詞|名|動|形|副|前|接|代|他|自|助|句|熟|冠|間)(?=[぀-ヿ㐀-鿿])/,""); // 先頭の品詞タグ文字を除去
   t=t.replace(new RegExp("[^"+JA_CHARS+"、。，・「」『』）)]+$"),"");        // 末尾のゴミ（* | など）を除去
   return t.trim();
 }
