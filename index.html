@@ -286,6 +286,8 @@
   </div>
 </div>
 
+<input type="file" id="restoreFile" accept="application/json,.json" style="display:none;">
+
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const STORE_KEY = "vocab_cards_v1";
@@ -407,7 +409,43 @@ function renderList(list){
     div.addEventListener("click",()=>openEdit(c.id));
     lv.appendChild(div);
   });
+  const backup=document.createElement("div");
+  backup.style.marginTop="16px";
+  backup.innerHTML=`<button class="ghost" id="exportBtn">⬇ データを書き出し（バックアップ）</button>
+    <button class="ghost" id="restoreBtn">⬆ データを復元（バックアップから）</button>`;
+  lv.appendChild(backup);
+  $("exportBtn").addEventListener("click",exportData);
+  $("restoreBtn").addEventListener("click",()=>$("restoreFile").click());
   attachSort();
+}
+
+function exportData(){
+  const data=JSON.stringify(cards,null,2);
+  const blob=new Blob([data],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="vocab-backup-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function importData(file){
+  if(!file) return;
+  const fr=new FileReader();
+  fr.onload=()=>{
+    try{
+      const arr=JSON.parse(fr.result);
+      if(!Array.isArray(arr)) throw new Error("形式が違います");
+      let add=0;
+      arr.forEach(o=>{
+        if(!o || !o.word) return;
+        const ex=cards.find(c=>(c.word||"").toLowerCase()===(o.word||"").toLowerCase());
+        if(!ex){ o.id=o.id||uid(); if(o.arch===undefined) o.arch=false; if(o.fav===undefined) o.fav=false; cards.push(o); add++; }
+      });
+      save(); render();
+      alert("復元しました："+add+" 件を追加（重複はスキップ）");
+    }catch(e){ alert("バックアップファイルを読み込めませんでした。"); }
+  };
+  fr.readAsText(file);
 }
 function attachSort(){
   const sel=$("sortSel");
@@ -503,17 +541,40 @@ function openImport(){
 }
 function closeImport(){ $("importOverlay").classList.remove("show"); }
 
+const UI_NOISE=/^(day\s*\d+|part\s*\d+.*|.*level.*|単語|例文|復習.*|.*聞き流し.*|.*設定.*|.*再生.*|\d+\s*分.*)$/i;
+const POS_LEAD=/^[\s|\[\]【】（）()]*(名|動|形|副|前|接|代|助|間|冠|句|熟|自|他)[\s|\[\]【】.:：、，]*/;
+function firstEnToken(s){ const m=(s||"").match(/[A-Za-z][A-Za-z'\-]*/); return m?m[0]:""; }
+function cleanJa(s){ return (s||"").replace(POS_LEAD,"").replace(/\s+/g," ").trim(); }
+
 function parseOCR(text){
-  const out=[];
-  text.split(/\r?\n/).forEach(line=>{
-    let l=line.replace(/\s+/g," ").trim(); if(!l) return;
-    const m=l.search(JP_RE);
-    if(m>0){
-      const en=l.slice(0,m).replace(/[\s=＝:：・\-—–\.\|]+$/,"").trim();
-      const ja=l.slice(m).trim();
-      if(en && /[A-Za-z]/.test(en)) out.push(en+" ＝ "+ja);
+  const lines=text.split(/\r?\n/).map(s=>s.replace(/\s+/g," ").trim()).filter(Boolean);
+  const out=[]; let pendingEn=null;
+  for(const l of lines){
+    if(UI_NOISE.test(l)) continue;
+    const hasJa=JP_RE.test(l);
+    const hasEn=/[A-Za-z]/.test(l);
+
+    if(hasEn && hasJa){
+      // 同じ行に英語＋日本語
+      const m=l.search(JP_RE);
+      const en=firstEnToken(l.slice(0,m));
+      const ja=cleanJa(l.slice(m));
+      if(en){ out.push(en+" ＝ "+ja); pendingEn=null; }
+      continue;
     }
-  });
+    if(hasEn){
+      // 英単語だけの行 → 見出し語として保持
+      const en=firstEnToken(l);
+      if(en) pendingEn=en;
+      continue;
+    }
+    if(hasJa){
+      // 日本語だけの行 → 直前の英単語と組にする
+      const ja=cleanJa(l);
+      if(!ja) continue; // 品詞タグだけの行は読み飛ばす（pendingEnは保持）
+      if(pendingEn){ out.push(pendingEn+" ＝ "+ja); pendingEn=null; }
+    }
+  }
   return out.join("\n");
 }
 
@@ -669,6 +730,7 @@ $("impCancel").addEventListener("click",closeImport);
 $("impCommit").addEventListener("click",commitImport);
 $("impFile").addEventListener("change",e=>runOCR(e.target.files[0]));
 $("importOverlay").addEventListener("click",e=>{ if(e.target===$("importOverlay")) closeImport(); });
+$("restoreFile").addEventListener("change",e=>importData(e.target.files[0]));
 
 $("favBtn").addEventListener("click",()=>{ favOnly=!favOnly; archMode=false; idx=0; render(); });
 $("listBtn").addEventListener("click",()=>{ listMode=!listMode; archMode=false; render(); });
