@@ -276,6 +276,9 @@
       <p class="hint-sm">英単語リストのスクリーンショットを選ぶと、英単語と日本語訳を読み取ります。読み取り結果は下で修正できます（1行に「英単語＝日本語」。区切りはタブ・カンマ・全角＝のいずれでもOK）。既に登録済みの単語はスキップ、アーカイブ済みなら復活させます。</p>
       <input type="file" id="impFile" accept="image/*">
       <div class="hint-sm" id="impStatus" style="margin-top:8px;"></div>
+      <label class="lbl">OCR APIキー（任意・無料／高精度）</label>
+      <input id="impKey" placeholder="OCR.space の無料APIキー（未入力でもお試し可）" autocapitalize="off" autocomplete="off">
+      <div class="hint-sm">高精度な読み取りに使います。<a href="https://ocr.space/ocrapi/freekey" target="_blank" style="color:var(--accent2)">こちらから無料キーを取得</a>（メール登録のみ）。一度入れると保存されます。</div>
       <label class="lbl">読み取り結果（編集可）</label>
       <textarea id="impText" style="min-height:170px;" placeholder="例：&#10;apple ＝ りんご&#10;run ＝ 走る"></textarea>
     </div>
@@ -292,6 +295,7 @@
 <script>
 const STORE_KEY = "vocab_cards_v1";
 const SORT_KEY = "vocab_sort";
+const OCRKEY_KEY = "vocab_ocr_key";
 let cards = [];
 let idx = 0;
 let editId = null;
@@ -537,6 +541,7 @@ function archiveCurrentEdit(){
 const JP_RE=/[぀-ヿ㐀-鿿ｦ-ﾟ々ー]/;
 function openImport(){
   $("impFile").value=""; $("impText").value=""; $("impStatus").textContent="";
+  $("impKey").value = localStorage.getItem(OCRKEY_KEY) || "";
   $("importOverlay").classList.add("show");
 }
 function closeImport(){ $("importOverlay").classList.remove("show"); }
@@ -602,24 +607,56 @@ function preprocess(img){
   return cv;
 }
 
+function toJpeg(img){
+  const maxW=1600; const scale=Math.min(1, maxW/(img.width||maxW));
+  const w=Math.round((img.width||maxW)*scale), h=Math.round((img.height||1000)*scale);
+  const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
+  cv.getContext("2d").drawImage(img,0,0,w,h);
+  return new Promise(res=>cv.toBlob(b=>res(b),"image/jpeg",0.9));
+}
+async function ocrSpace(blob, key){
+  const fd=new FormData();
+  fd.append("file", blob, "image.jpg");
+  fd.append("language","jpn");
+  fd.append("isOverlayRequired","false");
+  fd.append("scale","true");
+  fd.append("apikey", key);
+  const r=await fetch("https://api.ocr.space/parse/image",{method:"POST",body:fd});
+  const j=await r.json();
+  if(j.IsErroredOnProcessing){ throw new Error((j.ErrorMessage&&j.ErrorMessage[0])||"OCR処理エラー"); }
+  return (j.ParsedResults && j.ParsedResults[0] && j.ParsedResults[0].ParsedText) || "";
+}
+
+async function runTesseract(file){
+  if(typeof Tesseract==="undefined") throw new Error("Tesseract未読込");
+  let src=file; try{ src=preprocess(await loadImage(file)); }catch(e){}
+  const {data:{text}}=await Tesseract.recognize(src,"eng+jpn",{logger:m=>{
+    if(m.status==="recognizing text"){ $("impStatus").textContent="（予備OCR）読み取り中… "+Math.round((m.progress||0)*100)+"%"; }
+  }});
+  return text;
+}
+
 async function runOCR(file){
   if(!file) return;
-  if(typeof Tesseract==="undefined"){ $("impStatus").textContent="OCRエンジンを読み込めませんでした。ネット接続を確認してください。"; return; }
-  $("impStatus").textContent="読み取り中…（初回は文字認識データのダウンロードに数十秒かかります）";
+  const key=($("impKey").value.trim()) || localStorage.getItem(OCRKEY_KEY) || "";
+  if(key) localStorage.setItem(OCRKEY_KEY, key);
+  const useKey = key || "helloworld";
+  $("impStatus").textContent="読み取り中…（クラウドOCR）";
+  let text="";
   try{
-    let src=file;
-    try{ src=preprocess(await loadImage(file)); }catch(e){}
-    const {data:{text}}=await Tesseract.recognize(src,"eng+jpn",{logger:m=>{
-      if(m.status==="recognizing text"){ $("impStatus").textContent="読み取り中… "+Math.round((m.progress||0)*100)+"%"; }
-    }});
-    const parsed=parseOCR(text);
-    $("impText").value = parsed || (text||"").trim();
-    $("impStatus").textContent = parsed
-      ? "✓ 読み取り完了。内容を確認・修正して「リストに追加」を押してください。"
-      : "英語と日本語のペアを自動抽出できませんでした。1行ずつ「英単語 ＝ 日本語」の形に整えてください。";
+    let blob=file;
+    try{ blob=await toJpeg(await loadImage(file)); }catch(e){}
+    text=await ocrSpace(blob, useKey);
   }catch(e){
-    $("impStatus").textContent="読み取りに失敗しました。別の画像でお試しください。";
+    $("impStatus").textContent="クラウドOCRエラー（"+e.message+"）。予備のOCRで再試行します…";
+    try{ text=await runTesseract(file); }catch(e2){ $("impStatus").textContent="読み取りに失敗しました。別の画像でお試しください。"; return; }
   }
+  const parsed=parseOCR(text);
+  $("impText").value = parsed || (text||"").trim();
+  let msg = parsed ? "✓ 読み取り完了。確認・修正して「リストに追加」を押してください。"
+                   : "ペアを自動抽出できませんでした。1行ずつ「英単語 ＝ 日本語」に整えてください。";
+  if(!key) msg += "（無料共有キーで実行中：精度・回数に制限あり。下にご自身の無料APIキーを入れると安定します）";
+  $("impStatus").textContent = msg;
 }
 
 function splitPair(line){
