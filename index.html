@@ -27,12 +27,12 @@
     padding:14px 18px 8px; position:sticky; top:0;
     background:linear-gradient(180deg,rgba(15,18,38,.96),rgba(15,18,38,.7)); backdrop-filter:blur(8px); z-index:5;
   }
-  header h1{font-size:19px; margin:0; letter-spacing:.5px;}
+  header h1{font-size:18px; margin:0; letter-spacing:.5px; white-space:nowrap;}
   header h1 span{color:var(--accent2);}
-  .toolbar{display:flex; gap:7px;}
+  .toolbar{display:flex; gap:6px;}
   .iconbtn{
-    background:var(--card2); border:none; color:var(--text); width:38px; height:38px;
-    border-radius:11px; font-size:17px; display:grid; place-items:center; cursor:pointer;
+    background:var(--card2); border:none; color:var(--text); width:36px; height:36px;
+    border-radius:10px; font-size:16px; display:grid; place-items:center; cursor:pointer;
   }
   .iconbtn.active{background:var(--accent);}
   .stats{padding:0 18px 6px; color:var(--sub); font-size:13px; display:flex; gap:14px;}
@@ -125,7 +125,7 @@
   .sheet-actions button{flex:1; padding:14px; border-radius:14px; font-size:16px; font-weight:600; cursor:pointer; border:none;}
   .cancel{background:var(--card2); color:var(--text);}
   .archive{background:#2a2540; color:#c4b5fd;}
-  .hint-sm{font-size:12px; color:var(--sub); margin-top:4px;}
+  .hint-sm{font-size:12px; color:var(--sub); margin-top:4px; line-height:1.5;}
   .imgpreview{width:100%; height:130px; object-fit:cover; border-radius:12px; margin-top:8px; display:none; background:var(--card2);}
   .imgpreview.show{display:block;}
   .ghost{background:var(--card2); color:var(--text); border:1px solid var(--line); padding:11px; border-radius:11px; font-size:14px; cursor:pointer; margin-top:8px; width:100%;}
@@ -158,6 +158,7 @@
     <button class="iconbtn" id="shuffleBtn" title="シャッフル">⇄</button>
     <button class="iconbtn" id="listBtn" title="一覧">≡</button>
     <button class="iconbtn" id="archBtn" title="アーカイブ">🗄</button>
+    <button class="iconbtn" id="importBtn" title="写真から取り込み">📷</button>
     <button class="iconbtn" id="addBtn" title="追加">＋</button>
   </div>
 </header>
@@ -267,6 +268,25 @@
   </div>
 </div>
 
+<!-- import sheet -->
+<div class="overlay" id="importOverlay">
+  <div class="sheet">
+    <div class="sheet-body">
+      <h2>📷 写真から取り込み</h2>
+      <p class="hint-sm">英単語リストのスクリーンショットを選ぶと、英単語と日本語訳を読み取ります。読み取り結果は下で修正できます（1行に「英単語＝日本語」。区切りはタブ・カンマ・全角＝のいずれでもOK）。既に登録済みの単語はスキップ、アーカイブ済みなら復活させます。</p>
+      <input type="file" id="impFile" accept="image/*">
+      <div class="hint-sm" id="impStatus" style="margin-top:8px;"></div>
+      <label class="lbl">読み取り結果（編集可）</label>
+      <textarea id="impText" style="min-height:170px;" placeholder="例：&#10;apple ＝ りんご&#10;run ＝ 走る"></textarea>
+    </div>
+    <div class="sheet-actions">
+      <button class="cancel" id="impCancel">キャンセル</button>
+      <button class="primary" id="impCommit" style="flex:1.4;">リストに追加</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const STORE_KEY = "vocab_cards_v1";
 const SORT_KEY = "vocab_sort";
@@ -475,6 +495,81 @@ function archiveCurrentEdit(){
   save(); closeSheet(); render();
 }
 
+/* ===== 写真から取り込み（OCR） ===== */
+const JP_RE=/[぀-ヿ㐀-鿿ｦ-ﾟ々ー]/;
+function openImport(){
+  $("impFile").value=""; $("impText").value=""; $("impStatus").textContent="";
+  $("importOverlay").classList.add("show");
+}
+function closeImport(){ $("importOverlay").classList.remove("show"); }
+
+function parseOCR(text){
+  const out=[];
+  text.split(/\r?\n/).forEach(line=>{
+    let l=line.replace(/\s+/g," ").trim(); if(!l) return;
+    const m=l.search(JP_RE);
+    if(m>0){
+      const en=l.slice(0,m).replace(/[\s=＝:：・\-—–\.\|]+$/,"").trim();
+      const ja=l.slice(m).trim();
+      if(en && /[A-Za-z]/.test(en)) out.push(en+" ＝ "+ja);
+    }
+  });
+  return out.join("\n");
+}
+
+async function runOCR(file){
+  if(!file) return;
+  if(typeof Tesseract==="undefined"){ $("impStatus").textContent="OCRエンジンを読み込めませんでした。ネット接続を確認してください。"; return; }
+  $("impStatus").textContent="読み取り中…（初回は文字認識データのダウンロードに数十秒かかります）";
+  try{
+    const {data:{text}}=await Tesseract.recognize(file,"eng+jpn",{logger:m=>{
+      if(m.status==="recognizing text"){ $("impStatus").textContent="読み取り中… "+Math.round((m.progress||0)*100)+"%"; }
+    }});
+    const parsed=parseOCR(text);
+    $("impText").value = parsed || (text||"").trim();
+    $("impStatus").textContent = parsed
+      ? "✓ 読み取り完了。内容を確認・修正して「リストに追加」を押してください。"
+      : "英語と日本語のペアを自動抽出できませんでした。1行ずつ「英単語 ＝ 日本語」の形に整えてください。";
+  }catch(e){
+    $("impStatus").textContent="読み取りに失敗しました。別の画像でお試しください。";
+  }
+}
+
+function splitPair(line){
+  let l=line.trim();
+  let i=-1, sep=null;
+  if(l.includes("\t")) sep="\t";
+  else if(l.includes("＝")) sep="＝";
+  else if(l.includes("=")) sep="=";
+  else if(l.includes(",")) sep=",";
+  if(sep){ i=l.indexOf(sep); return [l.slice(0,i).trim(), l.slice(i+sep.length).trim()]; }
+  const m=l.search(JP_RE);
+  if(m>0) return [l.slice(0,m).trim(), l.slice(m).trim()];
+  return [l.trim(), ""];
+}
+
+function commitImport(){
+  const lines=$("impText").value.split(/\r?\n/);
+  let added=0, restored=0, dup=0;
+  lines.forEach(line=>{
+    if(!line.trim()) return;
+    let [en,ja]=splitPair(line);
+    en=(en||"").trim(); ja=(ja||"").trim();
+    if(!en) return;
+    const ex=cards.find(c=>(c.word||"").toLowerCase()===en.toLowerCase());
+    if(ex){
+      if(ex.arch){ ex.arch=false; if(ja && !ex.ja) ex.ja=ja; restored++; }
+      else { dup++; }
+    }else{
+      cards.unshift({id:uid(), word:en, ja:ja, fav:false, arch:false, createdAt:Date.now(), lastStudied:null});
+      added++;
+    }
+  });
+  save(); closeImport();
+  listMode=false; archMode=false; favOnly=false; idx=0; render();
+  alert("追加: "+added+" 件\n復活: "+restored+" 件\n既存のためスキップ: "+dup+" 件");
+}
+
 /* 自動入力：発音・語源・類似語・例文・画像（意味は手入力のため取得しない） */
 function setIfEmpty(id,val){ if(val && !$(id).value.trim()){ $(id).value=val; return true; } return false; }
 
@@ -568,6 +663,12 @@ $("autoFetch").addEventListener("click",autoFetch);
 $("inImg").addEventListener("input",updatePreview);
 $("clearImg").addEventListener("click",()=>{ $("inImg").value=""; updatePreview(); $("inImg").focus(); });
 $("lkGimg").addEventListener("click",()=>{ const w=$("inWord").value.trim(); if(!w){ $("fetchStatus").textContent="先に英単語を入力してください"; return; } window.open("https://www.google.com/search?tbm=isch&q="+encodeURIComponent("image "+w),"_blank"); });
+
+$("importBtn").addEventListener("click",openImport);
+$("impCancel").addEventListener("click",closeImport);
+$("impCommit").addEventListener("click",commitImport);
+$("impFile").addEventListener("change",e=>runOCR(e.target.files[0]));
+$("importOverlay").addEventListener("click",e=>{ if(e.target===$("importOverlay")) closeImport(); });
 
 $("favBtn").addEventListener("click",()=>{ favOnly=!favOnly; archMode=false; idx=0; render(); });
 $("listBtn").addEventListener("click",()=>{ listMode=!listMode; archMode=false; render(); });
