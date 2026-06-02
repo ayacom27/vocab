@@ -542,9 +542,19 @@ function openImport(){
 function closeImport(){ $("importOverlay").classList.remove("show"); }
 
 const UI_NOISE=/^(day\s*\d+|part\s*\d+.*|.*level.*|単語|例文|復習.*|.*聞き流し.*|.*設定.*|.*再生.*|\d+\s*分.*)$/i;
-const POS_LEAD=/^[\s|\[\]【】（）()]*(名|動|形|副|前|接|代|助|間|冠|句|熟|自|他)[\s|\[\]【】.:：、，]*/;
-function firstEnToken(s){ const m=(s||"").match(/[A-Za-z][A-Za-z'\-]*/); return m?m[0]:""; }
-function cleanJa(s){ return (s||"").replace(POS_LEAD,"").replace(/\s+/g," ").trim(); }
+function firstEnToken(s){
+  const t=(s||"").replace(/\s+/g,"");           // 文字間の無駄なスペースを除去
+  const m=t.match(/[A-Za-z][A-Za-z'\-]*/);       // 最初の英単語トークン
+  return (m && m[0].length>=2) ? m[0] : "";      // 1文字はアイコン誤認とみなし除外
+}
+function cleanJa(s){
+  let t=(s||"").trim();
+  // 先頭の品詞タグを除去（[形] (動) 【名】 形 など、括弧あり/なし）
+  t=t.replace(/^[\s|\[\(（【]*[名動形副前接代他自]\s*[\]\)）】]?[\s|.:：、，]*/,"");
+  // 日本語内の不要な空白を詰める（日本語に半角/全角スペースは不要）
+  t=t.replace(/[ 　]+/g,"").trim();
+  return t;
+}
 
 function parseOCR(text){
   const lines=text.split(/\r?\n/).map(s=>s.replace(/\s+/g," ").trim()).filter(Boolean);
