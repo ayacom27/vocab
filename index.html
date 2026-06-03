@@ -202,6 +202,7 @@
       <h2>追加方法を選ぶ</h2>
       <button class="primary" id="menuManual" style="width:100%; margin-bottom:10px;">✏️ 手動で追加</button>
       <button class="ghost" id="menuImport" style="margin-top:0;">📷 写真から読み取って追加</button>
+      <button class="ghost" id="setImgKey" style="margin-top:14px; font-size:13px; color:var(--sub);">🔧 画像検索の設定（Google）</button>
     </div>
     <div class="sheet-actions"><button class="cancel" id="menuCancel">キャンセル</button></div>
   </div>
@@ -274,7 +275,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
-const STORE_KEY="vocab_cards_v1", SORT_KEY="vocab_sort", OCRKEY_KEY="vocab_ocr_key";
+const STORE_KEY="vocab_cards_v1", SORT_KEY="vocab_sort", OCRKEY_KEY="vocab_ocr_key", GKEY_KEY="vocab_g_key", GCX_KEY="vocab_g_cx";
 let cards=[], idx=0, editId=null, favOnly=false, listMode=false, archMode=false, sortMode="created_desc";
 
 const $=id=>document.getElementById(id);
@@ -488,9 +489,17 @@ async function fetchWordInfo(w){
       info.pos=phon; if(defs[0]) info.ety=defs.slice(0,2).join(" / "); info.syn=[...new Set(syns)].slice(0,8).join(", "); info.ex=ex;
     }
   }catch(e){}
-  // 画像：単語をキーワードにした写真（LoremFlickr）。単語ごとに固定の1枚を表示
-  let lock=0; for(let i=0;i<w.length;i++) lock=(lock*31+w.charCodeAt(i))>>>0;
-  info.img="https://loremflickr.com/500/350/"+encodeURIComponent(w.toLowerCase())+"?lock="+(lock%100000);
+  // 画像：Google画像検索（Programmable Search）。APIキーと検索エンジンIDがある場合のみ取得
+  const gkey=(localStorage.getItem(GKEY_KEY)||"").trim();
+  const gcx=(localStorage.getItem(GCX_KEY)||"").trim();
+  if(gkey && gcx){
+    try{
+      const u="https://www.googleapis.com/customsearch/v1?searchType=image&num=1&safe=active&imgSize=medium"
+        +"&key="+encodeURIComponent(gkey)+"&cx="+encodeURIComponent(gcx)+"&q="+encodeURIComponent(w+" イメージ");
+      const r=await fetch(u);
+      if(r.ok){ const j=await r.json(); const it=j.items&&j.items[0]; if(it&&it.link) info.img=it.link; }
+    }catch(e){}
+  }
   return info;
 }
 function setIfEmpty(id,val){ if(val && !$(id).value.trim()){ $(id).value=val; return true; } return false; }
@@ -622,6 +631,14 @@ $("emptyAdd").addEventListener("click",()=>$("addMenu").classList.add("show"));
 $("menuCancel").addEventListener("click",()=>$("addMenu").classList.remove("show"));
 $("menuManual").addEventListener("click",()=>{ $("addMenu").classList.remove("show"); openAdd(); });
 $("menuImport").addEventListener("click",()=>{ $("addMenu").classList.remove("show"); openImport(); });
+$("setImgKey").addEventListener("click",()=>{
+  const k=prompt("Google APIキーを貼り付けてください（空にすると画像の自動取得を停止）。", localStorage.getItem(GKEY_KEY)||"");
+  if(k===null) return;
+  const cx=prompt("検索エンジンID（cx）を貼り付けてください。", localStorage.getItem(GCX_KEY)||"");
+  if(cx===null) return;
+  localStorage.setItem(GKEY_KEY,k.trim()); localStorage.setItem(GCX_KEY,cx.trim());
+  alert((k.trim()&&cx.trim())?"画像検索の設定を保存しました":"設定を消去しました");
+});
 $("addMenu").addEventListener("click",e=>{ if(e.target===$("addMenu")) $("addMenu").classList.remove("show"); });
 
 $("cancelBtn").addEventListener("click",closeSheet);
