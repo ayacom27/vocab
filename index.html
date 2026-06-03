@@ -496,6 +496,7 @@ async function fetchWordInfo(w){
 function setIfEmpty(id,val){ if(val && !$(id).value.trim()){ $(id).value=val; return true; } return false; }
 
 async function autoFillFromWord(){
+  if(editId!==null) return;           // 既存単語の編集中は自動取得しない（上書き防止）
   const w=$("inWord").value.trim();
   if(!w || w.toLowerCase()===lastFetched) return;
   lastFetched=w.toLowerCase();
